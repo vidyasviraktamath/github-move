@@ -1,0 +1,19 @@
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: "indiatestaks-2647"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: "indiatestaks-2647"
+  template:
+    metadata:
+      labels:
+        app: "indiatestaks-2647"
+    spec:
+      containers:
+        - name: "indiatestaks-2647"
+          image: "acrforimages.azurecr.io/indiatestaks"
+          ports:
+          - containerPort: 443
