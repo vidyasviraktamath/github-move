@@ -1,0 +1,63 @@
+on: [push]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    
+    - uses: actions/checkout@master
+    
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Create ACR
+      id: create-acr
+      run: |
+        az acr create -n acrforimages -g acrforimagesb1f3-rg --location "Central India" --sku Standard --admin-enabled
+        echo "::set-output name=acr_username::`az acr credential show -n acrforimages --query username | xargs`"
+        echo "::set-output name=acr_password::`az acr credential show -n acrforimages --query passwords[0].value | xargs`"
+        echo "::add-mask::`az acr credential show -n acrforimages --query passwords[0].value | xargs`"
+
+    - uses: azure/docker-login@v1
+      with:
+        login-server: acrforimages.azurecr.io
+        username: ${{ steps.create-acr.outputs.acr_username }}
+        password: ${{ steps.create-acr.outputs.acr_password }}
+
+    - name: Build and push image to ACR
+      id: build-image
+      run: |
+        docker build "$GITHUB_WORKSPACE/../Users/vivirakt/Documents" -f  "https://github.com/bitnami/bitnami-docker-git.git" -t acrforimages.azurecr.io/indiatestaks:${{ github.sha }} --label dockerfile-path=https://github.com/bitnami/bitnami-docker-git.git
+        docker push acrforimages.azurecr.io/indiatestaks:${{ github.sha }}
+    
+    - uses: azure/k8s-set-context@v1
+      id: login
+      with:
+         kubeconfig: ${{ secrets.aks_indiatestaks_kubeConfig }}
+    
+    - name: Create namespace
+      run: |
+        namespacePresent=`kubectl get namespace | grep indiatestaks9a64 | wc -l`
+        if [ $namespacePresent -eq 0 ]
+        then
+            echo `kubectl create namespace indiatestaks9a64`
+        fi
+
+    - uses: azure/k8s-create-secret@v1
+      with:
+        namespace: indiatestaks9a64
+        container-registry-url: acrforimages.azurecr.io
+        container-registry-username: ${{ steps.create-acr.outputs.acr_username }}
+        container-registry-password: ${{ steps.create-acr.outputs.acr_password }}
+        secret-name: indiatestaksdockerauth
+       
+    - uses: azure/k8s-deploy@v1.2
+      with:
+        namespace: indiatestaks9a64
+        manifests: |
+          manifests/deployment.yml
+          manifests/service.yml
+        images: |
+          acrforimages.azurecr.io/indiatestaks:${{ github.sha }}
+        imagepullsecrets: |
+          indiatestaksdockerauth   
